@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     gh = GithubTool(api_key=github_api)
 
-    output = AgentRunner(agent).final_result(
+    output = agent.final_result(
         "You were triggered by a PR opening/reopening. Follow your instructions."
     )
 
