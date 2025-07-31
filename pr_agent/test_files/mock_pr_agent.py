@@ -40,4 +40,4 @@ if __name__ == "__main__":
         "You were triggered by a PR opening/reopening. Follow your instructions."
     )
 
-    GithubTool.add_comment_to_issue(issue_numer = pr_id, body= output)
+    GithubTool.add_comment_to_issue(issue_number = pr_id, body= output)
