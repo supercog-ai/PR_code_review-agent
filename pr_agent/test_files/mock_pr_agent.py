@@ -26,7 +26,7 @@ agent = Agent(
     """,
     
     model=GPT_4O_MINI, # model
-    tools=[GithubTool(default_repo="supercog-ai/PR_code_review-agent")],
+    tools=[GithubTool()],
     memories=[]
 
 )
@@ -36,3 +36,5 @@ if __name__ == "__main__":
     output = agent.final_result(
         "You were triggered by a PR opening/reopening. Follow your instructions."
     )
+
+    print(output)
