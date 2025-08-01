@@ -26,7 +26,7 @@ agent = Agent(
     """,
     
     model=GPT_4O_MINI, # model
-    tools=[GithubTool(default_repo=" supercog-ai/PR_code_review-agent")],
+    tools=[GithubTool(default_repo="supercog-ai/PR_code_review-agent")],
     memories=[]
 
 )
