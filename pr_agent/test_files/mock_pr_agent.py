@@ -51,5 +51,5 @@ if __name__ == "__main__":
     data = {
         "body": output
     }
-    print(patch)
+    print(patch.read())
     print(requests.post(url=url,headers=headers,data=json.dumps(data)))
