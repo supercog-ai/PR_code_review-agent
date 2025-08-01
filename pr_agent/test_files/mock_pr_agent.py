@@ -20,24 +20,20 @@ agent = Agent(
     name="Mock PR Summary Agent",
 
     # Agent instructions
-    instructions="""
+    instructions=f"""
     You are a helpful mock PR sumary agent to test github integration.
-    Output a helpful example of a PR summary.
+    Create a helpful example of a PR summary.
+    Put a comment under the PR with the github tool. The issue number is {pr_id}.
     """,
     
     model=GPT_4O_MINI, # model
-    tools=[],
+    tools=[GithubTool(api_key=github_api)],
     memories=[]
 
 )
 
 # basic main function that allows us to run our agent locally in terminal
 if __name__ == "__main__":
-
-    gh = GithubTool(api_key=github_api)
-
     output = agent.final_result(
         "You were triggered by a PR opening/reopening. Follow your instructions."
     )
-
-    GithubTool.add_comment_to_issue(issue_number = pr_id, body= output)
