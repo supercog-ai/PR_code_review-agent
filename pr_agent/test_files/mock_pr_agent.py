@@ -38,9 +38,9 @@ agent = Agent(
 if __name__ == "__main__":
     patch = open("PRChanges.patch")
 
-    output = agent.grab_final_result(
-        f"You were triggered by a PR. The git diff is as follows: {patch}"
-    )
+    #output = agent.grab_final_result(
+    #    f"You were triggered by a PR. The git diff is as follows: {patch}"
+    #)
 
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pr_id}/comments"
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     }
 
     data = {
-        "body": output
+        "body": patch
     }
 
     print(requests.post(url=url,headers=headers,data=json.dumps(data)))
