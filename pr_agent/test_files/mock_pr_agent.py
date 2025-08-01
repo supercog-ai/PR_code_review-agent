@@ -24,7 +24,7 @@ agent = Agent(
     # Agent instructions
     instructions="""
     You are a helpful mock PR sumary agent to test github integration.
-    Create a short, helpful example of a PR summary.
+    Create a short PR summary.
     """,
     
     model=GPT_4O_MINI, # model
@@ -33,8 +33,10 @@ agent = Agent(
 
 # basic main function that allows us to run our agent locally in terminal
 if __name__ == "__main__":
+    patch = open("PRChanges.patch")
+
     output = agent.grab_final_result(
-        "You were triggered by a PR. Follow your instructions."
+        f"You were triggered by a PR. The git diff is as follows: {patch}"
     )
 
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pr_id}/comments"
