@@ -12,7 +12,6 @@ import os
 
 load_dotenv()  # This loads variables from .env into os.environ
 openai.api_key = os.getenv("OPENAI_API_KEY") # api key
-github_api = os.getenv("GH_TOKEN")
 pr_id = os.getenv("PR_ID")
 
 # Define the agent
@@ -27,7 +26,7 @@ agent = Agent(
     """,
     
     model=GPT_4O_MINI, # model
-    tools=[GithubTool(api_key=github_api)],
+    tools=[GithubTool()],
     memories=[]
 
 )
