@@ -29,14 +29,6 @@ class SearchResult(BaseModel):
     similarity_score: float = Field(
         desciption="Similarity score returned from vector search."
     )
-    is_relevant: bool = Field(
-        default = True,
-        description="Boolean describing if the search result is relevant to the query."
-    )
-    relevance_reason: str = Field(
-        default = "",
-        description="Boolean describing if the search result is relevant to the query."
-    )
     included_defs: List[str] = Field(
         default_factory=list,
         desciption="Similarity score returned from vector search."
@@ -49,7 +41,6 @@ class Searches(BaseModel):
 
 class RelevanceResult(BaseModel):
     relevant: bool 
-    reason: str
 
 class PRReviewAgent(Agent):
 
@@ -73,7 +64,7 @@ class PRReviewAgent(Agent):
             name="Code Query Agent",
             instructions=
 """
-You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a patch file to get additional context about changes to a code base. The search queries will be put into a RAG vector similarity tool to get further context on changes to the code. Your response must include a 'searches' field with a list of strings. Example outputs: Weather_Tool, SearchQuery, format_sections
+You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a patch file to get additional context about changes to a code base. Your response must include a 'searches' field with a list of strings. Example outputs: Weather_Tool, SearchQuery, format_sections
 """,
             model=GPT_4O_MINI,
             result_model=Searches,
@@ -81,7 +72,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 
         self.relevanceAgent = Agent(
             name="Code Relevange Agent",
-            instructions="""You are an expert in determining if a snippet of code is relevant to the search query. Your response must include a 'relevant' field boolean and a 'reason' field with a brief explanation.""",
+            instructions="""You are an expert in determining if a snippet of code or documentation is directly relevant to a query. Your response must include a 'relevant' field boolean.""",
             model=GPT_4O_MINI,
             result_model=RelevanceResult,
         )
@@ -107,7 +98,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         repo_owner = os.getenv("REPO_OWNER")
         repo_name = os.getenv("REPO_NAME")
         pr_id = os.getenv("PR_ID")
-        gh_token = os.getenv("GITHUB_TOKEN")
+        gh_token = os.getenv("GITHUB_API_KEY")
         
         if not all([repo_owner, repo_name, pr_id, gh_token]):
             raise ValueError("Missing required GitHub configuration")
@@ -136,18 +127,18 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         
         # Generate search queries
         queries = yield from self.queryAgent.final_result(
-            "You were called from a PR being opened. Follow your instructions.",
+            request_context.get("patch_content"),
             request_context={
-                "patch": request_context.get("patch_content"),
                 "thread_id": request_context.get("thread_id")
             }
         )
 
-        print("quer"+str(queries))
 
-        all_results = []
-    
-        for query in queries.searches:
+        print("queries: "+str(queries))
+
+        # RAG queries
+        all_results = {}
+        for query in queries.searches[:10]:
             searchResponse = yield from self.code_rag_agent.final_result(
                 f"Search codebase",
                 request_context={
@@ -157,37 +148,37 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             )
             
             # Process each result
-            for result in searchResponse.sections:
-                all_results.append(SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs))
+            for key, result in searchResponse.sections.items():
+                if not key in all_results:
+                    all_results[key] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
+
+        print("all: "+str(all_results))
 
         print("fil"+str(all_results))
 
         # Filter search results using LLM-based relevance checking
         filtered_results = []
-        
-        for result in all_results: 
-            if result.similarity_score < 0.5:
-                continue
+        for result in all_results.values(): 
+            
+            try:
+                relevance_check = yield from self.relevanceAgent.final_result(
+                    f"<Patch File>\n{request_context.get("patch_content")}\n</Patch File>\n\n<Content>{result.content}</Content><Query>{result.query}</Query>"
+                )
                 
-            relevance_check = yield from self.relevanceAgent.final_result(
-                "Check relevance",
-                result_context = {
-                    "content": result.content, 
-                    "query": result.query,
-                    "thread_id": request_context.get("thread_id")
-                }
-            )
-            
-            result.is_relevant = relevance_check.is_relevant
-            result.relevance_reason = relevance_check.reason
-            
-            if result.is_relevant:
-                filtered_results.append(result)
+                if relevance_check.relevant:
+                    filtered_results.append(result)
+            except Exception as e:
+                # LLM error
+                print(e)
+
+        print("filtered: ",str(filtered_results))
 
         print(str(filtered_results))
 
         # Prepare for summary
         formatted_str = self.prepare_summary(request_context.get("patch_content"),filtered_results)
+
+        print(formatted_str)
 
         summary = yield from self.summaryAgent.final_result(
             formatted_str
@@ -198,12 +189,12 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         # Return the final result
         yield ChatOutput(
             self.name,
-            {"content": f"## PR Review Complete\n\nSummary posted to: {comment_url}"}
+            [{"content": f"## PR Review Complete\n\nSummary posted to: {comment_url}"}]
         )
         
         yield TurnEnd(
             self.name,
-            {"content": "nice"}
+            [{"content": summary}]
         )
 
 # Create an instance of the agent
