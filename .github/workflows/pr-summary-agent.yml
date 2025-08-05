@@ -23,9 +23,10 @@ jobs:
         run: |
           uv venv --python 3.12
           uv pip install -e "../PR_code_review-agent[all,dev]" --extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-first-match
+          uv run pr_agent/PR_agent.py
 #          git diff --merge-base HEAD^1 HEAD > PRChanges.patch
 #          cat PRChanges.patch
-          uv run pr_agent/PR_agent.py
+#          uv run pr_agent/PR_agent.py
     
         env: 
           OPENAI_API_KEY: ${{ secrets.PRAgentOpenAIKey }}
@@ -33,4 +34,3 @@ jobs:
           GITHUB_API_KEY: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: supercog-ai
           REPO_NAME: PR_code_review-agent
-#comment
