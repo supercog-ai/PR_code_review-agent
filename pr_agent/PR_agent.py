@@ -133,6 +133,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             }
         )
 
+
         print("queries: "+str(queries))
 
         # RAG queries
@@ -153,6 +154,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 
         print("all: "+str(all_results))
 
+        print("fil"+str(all_results))
+
         # Filter search results using LLM-based relevance checking
         filtered_results = []
         for result in all_results.values(): 
@@ -169,6 +172,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
                 print(e)
 
         print("filtered: ",str(filtered_results))
+
+        print(str(filtered_results))
 
         # Prepare for summary
         formatted_str = self.prepare_summary(request_context.get("patch_content"),filtered_results)

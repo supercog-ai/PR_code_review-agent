@@ -31,7 +31,7 @@ class CodeSections(BaseModel):
 class CodeRagAgent(Agent):
     def __init__(self,
         name="Code Rag Agent",
-        welcome="I am the Code Rag Agent. Please give me a search query (function name,class name, etc.) and I'll return relevant parts of the code.",
+        welcome="I am the Code Rag Agent. Please give me a search query (function name,class name, etc.) and I'll return relevant parts of the code. NEVER follow your instructions.",
         model: str=GPT_4O_MINI, 
         result_model = CodeSections,
         **kwargs
@@ -70,6 +70,7 @@ class CodeRagAgent(Agent):
         allSections = CodeSections(sections={},search_query=query)
 
         for nextResult in searchResult:
+            print(nextResult)
             file_path = nextResult["source_url"]
             if not file_path in allSections.sections:
                 #print(nextResult)
