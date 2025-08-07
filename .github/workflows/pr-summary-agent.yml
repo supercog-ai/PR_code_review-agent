@@ -19,8 +19,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Download a single artifact
-        uses: actions/download-artifact@v4
+      - name: Download weaviate cache
+        id: download-artifact
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          github_token: ${{secrets.GITHUB_TOKEN}}
+          workflow: pr-summary-agent.yml
+          branch: ${{github.ref_name}}
 
       - name: Run agent
         run: |
