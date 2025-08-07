@@ -219,8 +219,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 pr_review_agent = PRReviewAgent()
 
 if __name__ == "__main__":
-    # Change to PRChanges.patch for deployment
-    with open("PRChangesTest.patch", "r") as f:
+    # Change to PRChangesTest.patch for testing
+    with open("PRChanges.patch", "r") as f:
         patch_content = f.read()
     
     # Run the agent
