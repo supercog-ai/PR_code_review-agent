@@ -217,4 +217,4 @@ if __name__ == "__main__":
         patch_content = f.read()
     
     # Run the agent
-    print(pr_review_agent.generate(patch_content))
+    print(pr_review_agent.final_result(patch_content))
