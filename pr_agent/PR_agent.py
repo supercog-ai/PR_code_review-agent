@@ -223,10 +223,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 
 
 
-if __name__ == "__main__":
-    print(Path.home() / ".cache/weaviate")
-
-
+if __name__ == "__main__":#
     # Change to PRChangesTest.patch for testing
     with open("PRChangesTest.patch", "r") as f:
         patch_content = f.read()
