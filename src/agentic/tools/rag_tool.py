@@ -85,7 +85,7 @@ class RAGTool(BaseAgenticTool):
 
                     for document in documents:
                         if not document["document_id"] in indexed_documents:
-                            console.print(f"[bold green]✅ Removing deleted file {document["filename"]} from index")
+                            console.print(f"[bold green]✅ Removing deleted file {document['filename']} from index")
                             delete_document_from_index(collection=collection,document_id=document["document_id"],filename=document["filename"])
 
                 except Exception as e:
