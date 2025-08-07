@@ -137,34 +137,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 
         print("queries: "+str(queries))
 
-
-
-        # # Git-Grep queries
-        # all_results = {}
-        # for query in queries.searches[:10]:
-        #     searchResponse = yield from self.git_grep_agent.final_result(
-        #         f"Search codebase with git grep",
-        #         request_context={
-        #             "query": query,
-        #             "thread_id": request_context.get("thread_id")
-        #         }
-        #     )
-            
-        #     # Process each result
-        #     # grep_response.sections is a list of CodeSection objects
-        #     for result in searchResponse.sections:
-        #         if result.file_path not in all_results:
-        #             all_results[result.file_path] = SearchResult(
-        #                 query=query,
-        #                 file_path=result.file_path,
-        #                 content=result.search_result,
-        #                 similarity_score=result.similarity_score,
-        #                 included_defs=result.included_defs
-        #     )
-
-
-
-        # RAG queries
+        # RAG and Git-Grep queries 
         all_results = {}
         for query in queries.searches[:10]:
             searchResponse = yield from self.code_rag_agent.final_result(
@@ -176,9 +149,30 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             )
             
             # Process each result
-            for key, result in searchResponse.sections.items():
-                if not key in all_results:
-                    all_results[key] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
+            for file, result in searchResponse.sections.items():
+                if not file in all_results:
+                    all_results[file] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
+            
+            searchResponse = yield from self.git_grep_agent.final_result(
+                f"Search codebase with git grep",
+                request_context={
+                    "query": query,
+                    "thread_id": request_context.get("thread_id")
+                }
+            )
+          
+            # Process each result
+            # grep_response.sections is a list of CodeSection objects
+            for file, result in searchResponse.sections.items():
+                if not file in all_results:
+                    all_results[file] = SearchResult(
+                        query=query,
+                        file_path=result.file_path,
+                        content=result.search_result,
+                        similarity_score=result.similarity_score,
+                        included_defs=result.included_defs
+            )
+
 
         print("all: "+str(all_results))
 
@@ -225,7 +219,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 pr_review_agent = PRReviewAgent()
 
 if __name__ == "__main__":
-    with open("PRChanges.patch", "r") as f:
+    # Change to PRChanges.patch for deployment
+    with open("PRChangesTest.patch", "r") as f:
         patch_content = f.read()
     
     # Run the agent

@@ -7,37 +7,7 @@ import subprocess
 import ast 
 import os
 
-
-# Defines strcutured data containers for the serach/query results 
-# each CodeSection object will represent one match from a git grep search 
-class CodeSection(BaseModel):
-    search_result: str = Field(
-        description="Matching line returned from git grep.",
-    )
-    file_path: str = Field(
-        description="Path of the file containing the match ."
-    )
-    included_defs: list[str] = Field(
-        description="Classes and functions defined in this file."
-    )
-    # consider making the similarity_score optional, since grep doesn't return a similarity score
-    similarity_score: float = Field(
-        description="Similarity score placeholder for git grep, default to 1.0" 
-    )   
-
-
-
-# Represents the collection of matches for one serach query
-class CodeSections(BaseModel):
-    # list of CodeSection objects 
-    sections: List[CodeSection] = Field(
-        description="Sections of the codebase returned from the git grep search.",
-    )
-    # This is the query used for git grep 
-    search_query: str = Field(
-        description="Query used to return this section.",
-    )
-
+from code_rag_agent import CodeSection, CodeSections
 
 # The actual sub-agent that runs git grep and returns structured results 
 class GitGrepAgent(Agent):
@@ -111,11 +81,11 @@ class GitGrepAgent(Agent):
 
 
         # TODO: verify that sections doesn't have to be a dictionary instead (like code_rag_agent implementation)
-        allSections = CodeSections(sections=[], search_query=search_query)          # creates an empty CodeSections object 
+        allSections = CodeSections(sections={}, search_query=search_query)          # creates an empty CodeSections object 
 
         # loops over each grep match
         for file_path, matched_line in grep_results:
-            if file_path not in allSections.sections:
+            if not file_path in allSections.sections:
                 included_defs = []
                 try:
                     if file_path.endswith(".py"):           # if a python file, parse the AST, and collect all function/class names 
@@ -125,17 +95,17 @@ class GitGrepAgent(Agent):
                                 n.name for n in node.body
                                 if isinstance (n, ast.ClassDef) or isinstance(n, ast.FunctionDef)
                             ]
+                    else:
+                        continue # ONLY search for .py files
 
                 except:
                     included_defs = []
 
-                # Only add if this file_path hasn’t already been added
-                if not any(sec.file_path == file_path for sec in allSections.sections):
-                    allSections.sections.append(CodeSection(
-                        search_result=matched_line,
-                        file_path=file_path,
-                        included_defs=included_defs,
-                        similarity_score=1.0  # grep doesn't do semantic scoring
-                    ))
+                allSections.sections[file_path] = CodeSection(
+                    search_result=matched_line,
+                    file_path=file_path,
+                    included_defs=included_defs,
+                    similarity_score=1.0  # grep doesn't do semantic scoring
+                )
 
         yield TurnEnd(self.name, [{"content": allSections}])
