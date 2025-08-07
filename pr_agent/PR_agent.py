@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import re
 import json
 import requests
@@ -138,7 +139,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         print("queries: "+str(queries))
 
         # RAG and Git-Grep queries 
-        all_results = {}
+        rag_results = {}
+        grep_results = {}
         for query in queries.searches[:10]:
             searchResponse = yield from self.code_rag_agent.final_result(
                 f"Search codebase",
@@ -150,8 +152,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             
             # Process each result
             for file, result in searchResponse.sections.items():
-                if not file in all_results:
-                    all_results[file] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
+                if not file in rag_results:
+                    rag_results[file] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
             
             searchResponse = yield from self.git_grep_agent.final_result(
                 f"Search codebase with git grep",
@@ -164,8 +166,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             # Process each result
             # grep_response.sections is a list of CodeSection objects
             for file, result in searchResponse.sections.items():
-                if not file in all_results:
-                    all_results[file] = SearchResult(
+                if not file in grep_results:
+                    grep_results[file] = SearchResult(
                         query=query,
                         file_path=result.file_path,
                         content=result.search_result,
@@ -174,11 +176,12 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             )
 
 
-        print("all: "+str(all_results))
+        print("rag: "+str(rag_results))
+        print("grep: "+str(grep_results))
 
-        # Filter search results using LLM-based relevance checking
+        # Filter rag search results using LLM-based relevance checking
         filtered_results = []
-        for result in all_results.values(): 
+        for result in rag_results.values(): 
             
             try:
                 relevance_check = yield from self.relevanceAgent.final_result(
@@ -190,6 +193,9 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             except Exception as e:
                 # LLM error
                 print(e)
+
+        for result in grep_results.values():
+            filtered_results.append(result)
 
         print("filtered: ",str(filtered_results))
 
@@ -219,6 +225,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 pr_review_agent = PRReviewAgent()
 
 if __name__ == "__main__":
+    print(Path.home() / ".cache/weaviate")
     # Change to PRChangesTest.patch for testing
     with open("PRChangesTest.patch", "r") as f:
         patch_content = f.read()

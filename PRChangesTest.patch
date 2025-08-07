@@ -42,12 +42,12 @@ index 46b8f1f..c99d863 100644
  
  class PRReviewAgent(Agent):
  
-@@ -81,7 +72,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a
+@@ -81,7 +72,7 @@ You t in determining if a snippet of code or documentation is needed to determine the purpose of a code change from the patch file. Your response must include a 'relevant' field boolean and a 'reason' field with a brief explanation.""",
++            instructions="""You are an expertare an expert in generating NON-NATURAL LANGUAGE CODE search queries from a
  
          self.relevanceAgent = Agent(
              name="Code Relevange Agent",
--            instructions="""You are an expert in determining if a snippet of code or documentation is needed to determine the purpose of a code change from the patch file. Your response must include a 'relevant' field boolean and a 'reason' field with a brief explanation.""",
-+            instructions="""You are an expert in determining if a snippet of code or documentation is directly relevant to a query. Your response must include a 'relevant' field boolean.""",
+-            instructions="""You are an exper in determining if a snippet of code or documentation is directly relevant to a query. Your response must include a 'relevant' field boolean.""",
              model=GPT_4O_MINI,
              result_model=RelevanceResult,
          )
