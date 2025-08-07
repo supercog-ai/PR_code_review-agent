@@ -1,6 +1,6 @@
 import os
 import requests
-from typing import List
+from typing import List, Dict
 from pydantic import Field, BaseModel
 from dotenv import load_dotenv
 from agentic.common import Agent
@@ -11,28 +11,16 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-class SearchResult(BaseModel):
-    query: str = Field(
-        description="Query used in this search."
-    )
-    file_path: str = Field(
-        description="Path of the file this code/documentation belongs to."
-    )
-    content: str = Field(
-        description="Content returned from search."
-    )
-    included_defs: List[str] = Field(
-        default_factory=list,
-        desciption="Similarity score returned from vector search."
-    )
-
 class Searches(BaseModel):
     searches: List[str] = Field(
         description="Search queries."
     )
 
-class RelevanceResult(BaseModel):
-    relevant: bool 
+# list workaround for model responses
+class ListType(BaseModel):
+    items: List[str] = Field(
+        description="List of items."
+    )
 
 class PRReviewAgent():
 
@@ -68,38 +56,19 @@ Be strict: if a symbol was defined in the patch, do not include it.""",
             result_model=Searches,
         )
 
-        self.relevanceAgent = Agent(
-            name="Code Relevance Agent",
-            instructions="""You are a code analysis agent. You will be given two inputs:
-
-A patch file (diff) representing changes made to one or more source code files.
-
-A single excerpt of text that was returned from git grep, which includes a matching line of text and its file path.
-
-Your task is to determine whether the excerpt is relevant to the changes in the patch. Relevance is defined by either of the following:
-
-The file path in the excerpt matches (exactly or closely) any file modified in the patch.
-
-The content of the excerpt is conceptually or semantically related to the code changes in the patch (e.g., it references a function, variable, or concept that was added, modified, or removed).
-
-Be conservative: if there's insufficient evidence for relevance, return false.""",
-            model=GPT_4O_MINI,
-            result_model=RelevanceResult,
-        )
-
         self.summaryAgent = SummaryAgent()
 
-    def prepare_summary(self, patch_content: str, filtered_results: List[SearchResult]) -> str:
+    def prepare_summary(self, patch_content: str, filtered_results: Dict[str, str]) -> str:
         """Prepare for summary agent"""
         formatted_str = ""
         formatted_str += f"<Patch file>\n"
         formatted_str += f"{patch_content}\n"
         formatted_str += f"</Patch File>\n\n"
         
-        for result in filtered_results:
-            formatted_str += f"<{result.file_path}>\n"
-            formatted_str += f"{result.content}\n"
-            formatted_str += f"</{result.file_path}>\n\n"
+        for file_path, content in filtered_results.items():
+            formatted_str += f"<{file_path}>\n"
+            formatted_str += f"{content}\n"
+            formatted_str += f"</{file_path}>\n\n"
 
         return formatted_str
 
@@ -131,37 +100,67 @@ Be conservative: if there's insufficient evidence for relevance, return false.""
         # Git-Grep queries
         all_results = {}
         for query in queries.searches[:10]:
-            searchResponse = self.git_grep_agent.get_search(query)
-            
-            if len(searchResponse.sections) > 0:
-                # Process each result
-                # grep_response.sections is a list of CodeSection objects
-                for result in searchResponse.sections:
-                    if result.file_path not in all_results:
-                        all_results[result.file_path] = SearchResult(
-                        query=query,
-                        file_path=result.file_path,
-                        content=result.search_result,
-                        included_defs=result.included_defs
-                    )
-                
-        # Filter search results using LLM-based relevance checking
-        filtered_results = []
-        for result in all_results.values(): 
-            
-            try:
-                relevance_check = self.relevanceAgent << f"<Patch File>\n{patch_content}\n</Patch File>\n\n<Content>{result.content}</Content><Query>{result.query}</Query>"
-                self.relevanceAgent.reset_history()
-                if relevance_check.relevant:
-                    filtered_results.append(result)
-            except Exception as e:
-                # LLM error
-                print(e)
+            searchResponse = self.git_grep_agent.get_search(query) # returns a dictionary of file paths and their contents
 
-        formatted_str = self.prepare_summary(patch_content,filtered_results)
+            # concatenate to all_results
+            for file_path, content in searchResponse.items():
+                if file_path not in all_results:
+                    all_results[file_path] = content
+
+        # vet for unneeded files
+        vetting = Agent(
+            name="Vetting Agent",
+            instructions="""
+            You are an AI agent that identifies source files most relevant to a given code patch.
+
+            You are provided with:
+
+            A patch file (unified diff format), which modifies certain functions, methods, variables, or logic.
+
+            A list of file paths obtained via git grep, which may or may not be relevant.
+
+            Your task is to analyze the patch semantically and determine which files in the list are most directly related to the code being changed, based on actual dependencies, references, or interactions — not just keyword overlap.
+
+            What You Should Do:
+
+            Extract the following from the patch:
+
+            Modified function names, variables, class names, or symbols
+
+            Any new or altered function calls (e.g. sanitize_input())
+
+            Any imported modules or utilities that may have changed
+
+            Contextual information (e.g. updated behavior, logic, or error handling)
+
+            For each file in the provided list:
+
+            Evaluate whether it defines, imports, calls, or depends on any of the symbols, functions, or classes involved in the patch.
+
+            Prefer files that have functional or logical connections (e.g. where the modified function is called, or where a helper function is defined).
+
+            De-prioritize files with only surface-level textual matches or unrelated content.
+
+            Ignore files that share keywords but have no semantic connection to the changed code.
+
+            Give preference to files that define or use identifiers appearing in the patch.
+
+            If necessary, infer relevance based on common architectural patterns (e.g. services call validators, tests cover services, etc.).
+            """,
+            model=GPT_4O_MINI,
+            result_model=ListType
+        )
+
+        vetted_results = vetting << (patch_content + "\n\n" + str(all_results.keys()))
+        # Can hallucinate file paths, this works around it
+        vet_dict = {k: all_results[k] if k in all_results else "" for k in vetted_results.items}
+
+        # format string and send it to get summary
+        formatted_str = self.prepare_summary(patch_content,vet_dict)
 
         summary = self.summaryAgent << formatted_str
 
+        #post to github
         comment_url = self.post_to_github(summary)
 
         return comment_url
