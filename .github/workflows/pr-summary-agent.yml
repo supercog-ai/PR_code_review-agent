@@ -27,6 +27,7 @@ jobs:
           workflow: pr-summary-agent.yml
           name: weaviate
           if_no_artifact_found: warn
+          path: /home/runner/.cache/weaviate
 
       - name: Run agent
         run: |
