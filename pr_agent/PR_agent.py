@@ -8,6 +8,9 @@ from agentic.models import GPT_4O_MINI
 from git_grep_agent import GitGrepAgent
 from summary_agent import SummaryAgent
 from pydantic import BaseModel
+from typing import Dict, List, Any, Generator, Optional, Tuple
+from agentic.common import Agent, AgentRunner, ThreadContext
+from agentic.events import Event, ChatOutput, TurnEnd, PromptStarted, Prompt
 
 load_dotenv()
 
@@ -129,28 +132,61 @@ Be conservative: if there's insufficient evidence for relevance, return false.""
         response.raise_for_status()
         return response.json().get("html_url")
 
-
-    def generate(self, patch_content: str) -> str:
+    def next_turn(
+        self,
+        request: str,
+        request_context: dict = None,
+        request_id: str = None,
+        continue_result: dict = {},
+        debug = "",
+    ) -> Generator[Event, Any, None]:
+        
+        query = request.payload if isinstance(request, Prompt) else request
+        yield PromptStarted(query, {"query": query})
+        
         # Generate search queries
-        queries = self.queryAgent << patch_content
+        queries = yield from self.queryAgent.final_result(
+            request_context.get("patch_content"),
+            request_context={
+                "thread_id": request_context.get("thread_id")
+            }
+        )
 
-        # Git-Grep queries
+        print("queries: "+str(queries))
+
+        # RAG and Git-Grep queries 
         all_results = {}
         for query in queries.searches[:10]:
             searchResponse = self.git_grep_agent.get_search(query)
             
-            if len(searchResponse.sections) > 0:
-                # Process each result
-                # grep_response.sections is a list of CodeSection objects
-                for result in searchResponse.sections:
-                    if result.file_path not in all_results:
-                        all_results[result.file_path] = SearchResult(
+            # Process each result
+            for file, result in searchResponse.sections.items():
+                if not file in all_results:
+                    all_results[file] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
+            
+            searchResponse = yield from self.git_grep_agent.final_result(
+                f"Search codebase with git grep",
+                request_context={
+                    "query": query,
+                    "thread_id": request_context.get("thread_id")
+                }
+            )
+          
+            # Process each result
+            # grep_response.sections is a list of CodeSection objects
+            for file, result in searchResponse.sections.items():
+                if not file in all_results:
+                    all_results[file] = SearchResult(
                         query=query,
                         file_path=result.file_path,
                         content=result.search_result,
+                        similarity_score=result.similarity_score,
                         included_defs=result.included_defs
-                    )
-                
+            )
+
+
+        print("all: "+str(all_results))
+
         # Filter search results using LLM-based relevance checking
         filtered_results = []
         for result in all_results.values(): 
@@ -176,8 +212,9 @@ Be conservative: if there's insufficient evidence for relevance, return false.""
 pr_review_agent = PRReviewAgent()
 
 if __name__ == "__main__":
+    # Change to PRChangesTest.patch for testing
     with open("PRChanges.patch", "r") as f:
         patch_content = f.read()
     
     # Run the agent
-    print(pr_review_agent.generate(patch_content))
+    print(pr_review_agent.final_result(patch_content))
