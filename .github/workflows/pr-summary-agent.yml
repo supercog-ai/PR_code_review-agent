@@ -37,7 +37,7 @@ jobs:
           REPO_OWNER: supercog-ai
           REPO_NAME: PR_code_review-agent
       
-       -name: Update weaviate cache
+      - name: Update weaviate cache
         uses: actions/upload-artifact@v4
         with:
           name: weaviate
