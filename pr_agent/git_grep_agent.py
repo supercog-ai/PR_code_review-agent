@@ -50,7 +50,7 @@ class GitGrepAgent(Agent):
                     continue
                 parts = line.split(":", 2)  # file_path, line_number, line_text
                 if len(parts) >= 3:         # if the output line is in the correct format 
-                    file_path, line_number, matched_line = parts
+                    file_path, line_number, matched_lien = parts
                     matches.append((file_path, open(file_path).read()))
             return matches
         except Exception as e:

@@ -221,14 +221,18 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             [{"content": summary}]
         )
 
-# Create an instance of the agent
-pr_review_agent = PRReviewAgent()
+
 
 if __name__ == "__main__":
     print(Path.home() / ".cache/weaviate")
+
+
     # Change to PRChangesTest.patch for testing
     with open("PRChangesTest.patch", "r") as f:
         patch_content = f.read()
+
+    # Create an instance of the agent
+    pr_review_agent = PRReviewAgent()
     
     # Run the agent
     print(pr_review_agent.grab_final_result("Triggered by a PR",{"patch_content":patch_content}))
