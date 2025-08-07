@@ -1,21 +1,19 @@
 import os
-import re
-import json
 import requests
-from typing import Dict, List, Any, Generator, Optional, Tuple
+from typing import List
 from pydantic import Field, BaseModel
 from dotenv import load_dotenv
-from agentic.common import Agent, AgentRunner, ThreadContext
-from agentic.events import Event, ChatOutput, TurnEnd, PromptStarted, Prompt
+from agentic.common import Agent
 from agentic.models import GPT_4O_MINI
-
-from code_rag_agent import CodeRagAgent
 from git_grep_agent import GitGrepAgent
 from summary_agent import SummaryAgent
-from code_rag_agent import CodeSection, CodeSections
 from pydantic import BaseModel
 
 load_dotenv()
+
+def call_llm(input):
+    agent, text = input
+    return agent._get_llm_completion(history=[{"role": "user", "content": text}], thread_context=agent.thread_context, model_override=None, stream=False).choices[0].message.content
 
 class SearchResult(BaseModel):
     query: str = Field(
@@ -26,9 +24,6 @@ class SearchResult(BaseModel):
     )
     content: str = Field(
         description="Content returned from search."
-    )
-    similarity_score: float = Field(
-        desciption="Similarity score returned from vector search."
     )
     included_defs: List[str] = Field(
         default_factory=list,
@@ -43,38 +38,57 @@ class Searches(BaseModel):
 class RelevanceResult(BaseModel):
     relevant: bool 
 
-class PRReviewAgent(Agent):
+class PRReviewAgent():
 
-    def __init__(
-        self,
-        name: str = "PR Review Agent",
-        model: str = GPT_4O_MINI,
-        verbose: bool = False,
-        **kwargs
-    ):
-        super().__init__(
-            name=name,
-            welcome="PR Review Agent initialized. Ready to process PRs.",
-            model=model,
-            **kwargs
-        )
+    def __init__(self):
         self.git_grep_agent = GitGrepAgent()
-        self.code_rag_agent = CodeRagAgent()
-        self.verbose = verbose
 
         self.queryAgent = Agent(
             name="Code Query Agent",
-            instructions=
-"""
-You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a patch file to get additional context about changes to a code base. Your response must include a 'searches' field with a list of strings. Example outputs: Weather_Tool, SearchQuery, format_sections
-""",
+            instructions="""You are a static code analysis agent. You will be given a patch file (diff) showing code changes made to a source codebase.
+
+Your goal is to extract a list of search terms that can be used with git grep to locate code relevant to the changes but defined elsewhere in the codebase.
+
+Specifically, extract symbols that meet all of the following criteria:
+
+Used in the patch (referenced or invoked).
+
+Not defined in the patch (not declared, assigned, implemented, or modified as a definition).
+
+Not part of a known module or standard library (i.e., imported or obvious system-provided identifiers).
+
+Likely defined elsewhere in the same project — e.g., internal utility functions, constants, types, classes, etc.
+
+Additional requirements:
+
+Do not include anything that is added or changed in the patch’s + lines if it defines a symbol.
+
+Do not include anything from lines that import, include, or reference known external modules (e.g. import re, from datetime import ..., #include <stdlib.h>, etc.).
+
+Skip overly broad or generic patterns. Only include identifiers that are likely unique enough to help pinpoint related code.
+
+Output the result as a JSON array of string patterns suitable for use with git grep, such as:
+
+Be strict: if a symbol was defined in the patch, do not include it.""",
             model=GPT_4O_MINI,
             result_model=Searches,
         )
 
         self.relevanceAgent = Agent(
-            name="Code Relevange Agent",
-            instructions="""You are an expert in determining if a snippet of code or documentation is directly relevant to a query. Your response must include a 'relevant' field boolean.""",
+            name="Code Relevance Agent",
+            instructions="""You are a code analysis agent. You will be given two inputs:
+
+A patch file (diff) representing changes made to one or more source code files.
+
+A single excerpt of text that was returned from git grep, which includes a matching line of text and its file path.
+
+Your task is to determine whether the excerpt is relevant to the changes in the patch. Relevance is defined by either of the following:
+
+The file path in the excerpt matches (exactly or closely) any file modified in the patch.
+
+The content of the excerpt is conceptually or semantically related to the code changes in the patch (e.g., it references a function, variable, or concept that was added, modified, or removed).
+
+Be conservative: if there's insufficient evidence for relevance, return false.""",
             model=GPT_4O_MINI,
             result_model=RelevanceResult,
         )
@@ -140,13 +154,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         # RAG and Git-Grep queries 
         all_results = {}
         for query in queries.searches[:10]:
-            searchResponse = yield from self.code_rag_agent.final_result(
-                f"Search codebase",
-                request_context={
-                    "query": query,
-                    "thread_id": request_context.get("thread_id")
-                }
-            )
+            searchResponse = self.git_grep_agent.get_search(query)
             
             # Process each result
             for file, result in searchResponse.sections.items():
@@ -181,39 +189,21 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         for result in all_results.values(): 
             
             try:
-                relevance_check = yield from self.relevanceAgent.final_result(
-                    f"<Patch File>\n{request_context.get("patch_content")}\n</Patch File>\n\n<Content>{result.content}</Content><Query>{result.query}</Query>"
-                )
-                
+                relevance_check = self.relevanceAgent << f"<Patch File>\n{patch_content}\n</Patch File>\n\n<Content>{result.content}</Content><Query>{result.query}</Query>"
+                self.relevanceAgent.reset_history()
                 if relevance_check.relevant:
                     filtered_results.append(result)
             except Exception as e:
                 # LLM error
                 print(e)
 
-        print("filtered: ",str(filtered_results))
+        formatted_str = self.prepare_summary(patch_content,filtered_results)
 
-        # Prepare for summary
-        formatted_str = self.prepare_summary(request_context.get("patch_content"),filtered_results)
-
-        print(formatted_str)
-
-        summary = yield from self.summaryAgent.final_result(
-            formatted_str
-        )
+        summary = self.summaryAgent << formatted_str
 
         comment_url = self.post_to_github(summary)
 
-        # Return the final result
-        yield ChatOutput(
-            self.name,
-            [{"content": f"## PR Review Complete\n\nSummary posted to: {comment_url}"}]
-        )
-        
-        yield TurnEnd(
-            self.name,
-            [{"content": summary}]
-        )
+        return comment_url
 
 # Create an instance of the agent
 pr_review_agent = PRReviewAgent()
@@ -224,4 +214,4 @@ if __name__ == "__main__":
         patch_content = f.read()
     
     # Run the agent
-    print(pr_review_agent.grab_final_result("Triggered by a PR",{"patch_content":patch_content}))
+    print(pr_review_agent.generate(patch_content))
