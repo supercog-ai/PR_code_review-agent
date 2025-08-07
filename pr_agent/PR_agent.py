@@ -9,12 +9,15 @@ from dotenv import load_dotenv
 from agentic.common import Agent, AgentRunner, ThreadContext
 from agentic.events import Event, ChatOutput, TurnEnd, PromptStarted, Prompt
 from agentic.models import GPT_4O_MINI
-
+from litellm import token_counter
 from code_rag_agent import CodeRagAgent
 from git_grep_agent import GitGrepAgent
 from summary_agent import SummaryAgent
 from code_rag_agent import CodeSection, CodeSections
 from pydantic import BaseModel
+
+SUMMARY_MODEL = GPT_4O_MINI
+# SUMMARY_MODEL = CLAUDE
 
 load_dotenv()
 
@@ -67,7 +70,7 @@ class PRReviewAgent(Agent):
             name="Code Query Agent",
             instructions=
 """
-You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a patch file to get additional context about changes to a code base. Your response must include a 'searches' field with a list of strings. Example outputs: Weather_Tool, SearchQuery, format_sections
+You are an expert in generating code search queries from a patch file to get additional context about changes to a code base. Your response must include a 'searches' field with a list of strings. Example outputs: Weather_Tool, SearchQuery, format_sections
 """,
             model=GPT_4O_MINI,
             result_model=Searches,
@@ -75,7 +78,7 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
 
         self.relevanceAgent = Agent(
             name="Code Relevange Agent",
-            instructions="""You are an expert in determining if a snippet of code or documentation is directly relevant to a query. Your response must include a 'relevant' field boolean.""",
+            instructions="""You are an expert in determining if a snippet of code or documentation is directly relevant to understand the changes listed under <Patch File>. Your response must include a 'relevant' field boolean.""",
             model=GPT_4O_MINI,
             result_model=RelevanceResult,
         )
@@ -83,18 +86,26 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
         self.summaryAgent = SummaryAgent()
 
     def prepare_summary(self, patch_content: str, filtered_results: List[SearchResult]) -> str:
+        
         """Prepare for summary agent"""
         formatted_str = ""
         formatted_str += f"<Patch file>\n"
         formatted_str += f"{patch_content}\n"
         formatted_str += f"</Patch File>\n\n"
+
+        final_str = formatted_str[:]
         
         for result in filtered_results:
             formatted_str += f"<{result.file_path}>\n"
             formatted_str += f"{result.content}\n"
             formatted_str += f"</{result.file_path}>\n\n"
+            
+            if token_counter(model=SUMMARY_MODEL, messages=[{"role": "user", "content": {final_str}}]) < 115000:
+                break
+            else:
+                final_str = formatted_str[:]
 
-        return formatted_str
+        return final_str
 
     def post_to_github(self, summary: str) -> str:
         """Post summary as a GitHub comment"""
@@ -136,11 +147,10 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             }
         )
 
-        print("queries: "+str(queries))
+        print("queries: ", str(queries))
 
         # RAG and Git-Grep queries 
-        rag_results = {}
-        grep_results = {}
+        all_results = {}
         for query in queries.searches[:10]:
             searchResponse = yield from self.code_rag_agent.final_result(
                 f"Search codebase",
@@ -152,8 +162,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             
             # Process each result
             for file, result in searchResponse.sections.items():
-                if not file in rag_results:
-                    rag_results[file] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
+                if not file in all_results:
+                    all_results[file] = SearchResult(query=query,file_path=result.file_path,content=result.search_result,similarity_score=result.similarity_score,included_defs=result.included_defs)
             
             searchResponse = yield from self.git_grep_agent.final_result(
                 f"Search codebase with git grep",
@@ -166,8 +176,8 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             # Process each result
             # grep_response.sections is a list of CodeSection objects
             for file, result in searchResponse.sections.items():
-                if not file in grep_results:
-                    grep_results[file] = SearchResult(
+                if not file in all_results:
+                    all_results[file] = SearchResult(
                         query=query,
                         file_path=result.file_path,
                         content=result.search_result,
@@ -176,12 +186,11 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
             )
 
 
-        print("rag: "+str(rag_results))
-        print("grep: "+str(grep_results))
+        print("all: ", all_results)
 
         # Filter rag search results using LLM-based relevance checking
         filtered_results = []
-        for result in rag_results.values(): 
+        for result in all_results.values(): 
             
             try:
                 relevance_check = yield from self.relevanceAgent.final_result(
@@ -194,10 +203,10 @@ You are an expert in generating NON-NATURAL LANGUAGE CODE search queries from a 
                 # LLM error
                 print(e)
 
-        for result in grep_results.values():
+        for result in all_results.values():
             filtered_results.append(result)
 
-        print("filtered: ",str(filtered_results))
+        print("filtered: ", str(filtered_results))
 
         # Prepare for summary
         formatted_str = self.prepare_summary(request_context.get("patch_content"),filtered_results)
