@@ -6,8 +6,62 @@ from pydantic import BaseModel, Field
 import subprocess
 import ast 
 import os
+import logging
 
 from code_rag_agent import CodeSection, CodeSections
+
+def find_full_function(file_path: str, line_number: int) -> str:
+    """Finds the full function definition given a file path and line number. Expects a properly formatted file."""
+
+    SUPPORTED_EXTENSIONS = [".py"]
+    line_number -= 1 # line numbers start at 1, not 0, bad for native zero indexing
+    try:
+        with open(file_path) as file:
+            text = file.read()
+    except Exception as e:
+        return f"Error with file: {e}"
+        
+    if not any(file_path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+        logging.error("File is not a supported extension, returning full file")
+        return text
+
+
+
+    if file_path.endswith(".py"):
+        # 3 cases, in the middle of a function, or in function definition, or just a line in the file (in this case, return full file)
+        lines = text.splitlines()
+
+        # check if starting in a string
+        # WARNING: this will NOT catch every single case. If for whatever reason the file has a string that is something like '"""'
+        # it will not catch it but this should never come up hopefully
+        in_string = False
+        for line in lines[:line_number]:
+            if "\"\"\"" in line or "\'\'\'" in line:
+                if line.count("\"\"\"") % 2 != 0: # if the number of """ is odd, we are in a string
+                    in_string = not in_string
+                if line.count("\'\'\'") % 2 != 0:
+                    in_string = not in_string
+
+        
+        def is_a_zero(line: str) -> bool:
+            if not line or line[0] == " ":
+                return False
+            return True
+        
+        # The idea is to find the full class definition the function is embedded in, so we need to go up and down until we find this
+        # A concern I have with this is that if the line number is in a string, it may bug out
+        top_index = line_number
+        while (top_index > 0 and not is_a_zero(lines[top_index])):
+            top_index -= 1
+        
+        bottom_index = line_number + 1
+        while (bottom_index < len(lines) and not is_a_zero(lines[bottom_index])):
+            bottom_index += 1
+        
+        return "\n".join(lines[top_index:bottom_index])
+        
+
+    return text
 
 # The actual sub-agent that runs git grep and returns structured results 
 class GitGrepAgent(Agent):
