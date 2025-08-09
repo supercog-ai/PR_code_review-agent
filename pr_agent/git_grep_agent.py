@@ -6,8 +6,52 @@ from pydantic import BaseModel, Field
 import subprocess
 import ast 
 import os
+import keyword
+import logging
 
 from code_rag_agent import CodeSection, CodeSections
+
+def find_full_function(file_path: str, line_number: int) -> str:
+    """Finds the full function definition given a file path and line number. Expects a properly formatted file."""
+
+    SUPPORTED_EXTENSIONS = [".py"]
+    line_number -= 1 # line numbers start at 1, not 0, bad for native zero indexing
+    try:
+        with open(file_path) as file:
+            text = file.read()
+    except Exception as e:
+        return f"Error with file: {e}"
+        
+    if not any(file_path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+        logging.error("File is not a supported extension, returning full file")
+        return text
+
+    if file_path.endswith(".py"):
+        lines = text.splitlines()
+
+        if len(lines) < line_number: # move this out of the if statement later
+            logging.error("Line number is out of bounds, returning full file")
+            return text
+
+        # this function is "good enough" -- if there is any function that is not defined by the keyword module called outside of a class or function, it will keep it
+        def is_a_zero(line: str) -> bool:
+            if not line or line[0] == " " or not keyword.iskeyword(line.split()[0]):
+                return False
+            return True
+        
+        # The idea is to find the full class definition the function is embedded in, so we need to go up and down until we find this
+        top_index = line_number
+
+        while (top_index > 0 and not is_a_zero(lines[top_index])):
+            top_index -= 1
+        
+        bottom_index = line_number + 1
+        while (bottom_index < len(lines) and not is_a_zero(lines[bottom_index])):
+            bottom_index += 1
+        
+        return "\n".join(lines[top_index:bottom_index])
+    
+    return text
 
 # The actual sub-agent that runs git grep and returns structured results 
 class GitGrepAgent(Agent):
@@ -109,3 +153,6 @@ class GitGrepAgent(Agent):
                 )
 
         yield TurnEnd(self.name, [{"content": allSections}])
+
+if __name__ == "__main__":
+    print(find_full_function("git_grep_agent.py", 172))
