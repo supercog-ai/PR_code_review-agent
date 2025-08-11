@@ -109,7 +109,7 @@ You are an expert in generating code search queries from a patch file to get add
 
     def post_to_github(self, summary: str) -> str:
         """Post summary as a GitHub comment"""
-        repo = os.getenv("repo")
+        repo = os.getenv("REPO")
         pr_id = os.getenv("PR_ID")
         gh_token = os.getenv("GITHUB_API_KEY")
         
