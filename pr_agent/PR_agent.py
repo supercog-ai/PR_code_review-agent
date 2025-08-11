@@ -174,7 +174,7 @@ You are an expert in generating code search queries from a patch file to get add
             )
           
             # Process each result
-            # grep_response.sections is a list of CodeSection objects
+            # grep_response.sections is a dict of filepaths and CodeSection objects
             for file, result in searchResponse.sections.items():
                 if file not in all_results:
                     all_results[file] = SearchResult(

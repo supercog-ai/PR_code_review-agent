@@ -1,11 +1,9 @@
 from typing import Any, Generator, List
-from agentic.common import Agent, AgentRunner, ThreadContext
-from agentic.events import Event, ChatOutput, WaitForInput, Prompt, PromptStarted, TurnEnd, ResumeWithInput
+from agentic.common import Agent
+from agentic.events import Event, Prompt, PromptStarted, TurnEnd
 from agentic.models import GPT_4O_MINI # model (using GPT for testing)
-from pydantic import BaseModel, Field
 import subprocess
 import ast 
-import os
 import keyword
 import logging
 
@@ -23,7 +21,7 @@ def find_full_function(file_path: str, line_number: int) -> str:
         return f"Error with file: {e}"
         
     if not any(file_path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
-        logging.error("File is not a supported extension, returning full file")
+        logging.warning("File is not a supported extension, returning full file")
         return text
 
     if file_path.endswith(".py"):
@@ -95,7 +93,7 @@ class GitGrepAgent(Agent):
                 parts = line.split(":", 2)  # file_path, line_number, line_text
                 if len(parts) >= 3:         # if the output line is in the correct format 
                     file_path, line_number, matched_line = parts
-                    matches.append((file_path, open(file_path).read()))
+                    matches.append((file_path, find_full_function(file_path, int(line_number))))
             return matches
         except Exception as e:
             print(f"Error running git grep: {e}")
@@ -128,27 +126,12 @@ class GitGrepAgent(Agent):
         allSections = CodeSections(sections={}, search_query=search_query)          # creates an empty CodeSections object 
 
         # loops over each grep match
-        for file_path, matched_line in grep_results:
+        for file_path, content in grep_results:
             if not file_path in allSections.sections:
-                included_defs = []
-                try:
-                    if file_path.endswith(".py"):           # if a python file, parse the AST, and collect all function/class names 
-                        with open(file_path) as file:       # this gives structural context for the matched file 
-                            node = ast.parse(file.read())
-                            included_defs = [
-                                n.name for n in node.body
-                                if isinstance (n, ast.ClassDef) or isinstance(n, ast.FunctionDef)
-                            ]
-                    else:
-                        continue # ONLY search for .py files
-
-                except:
-                    included_defs = []
-
                 allSections.sections[file_path] = CodeSection(
-                    search_result=matched_line,
+                    search_result=content,
                     file_path=file_path,
-                    included_defs=included_defs,
+                    included_defs=[],
                     similarity_score=1.0  # grep doesn't do semantic scoring
                 )
 
