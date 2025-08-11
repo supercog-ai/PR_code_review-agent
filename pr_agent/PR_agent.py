@@ -237,7 +237,7 @@ if __name__ == "__main__":
         print("api key missing")
 
     # Change to PRChangesTest.patch for testing
-    with open("PRChangesTest.patch", "r") as f:
+    with open("PRChanges.patch", "r") as f:
         patch_content = f.read()
 
     # Create an instance of the agent
