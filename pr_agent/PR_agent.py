@@ -75,13 +75,9 @@ You are an expert in generating code search queries from a patch file to get add
             model=GPT_4O_MINI,
             result_model=Searches,
         )
-
-        self.relevanceAgent = Agent(
-            name="Code Relevange Agent",
-            instructions="""You are an expert in determining if a snippet of code or documentation is directly relevant to understand the changes listed under <Patch File>. Your response must include a 'relevant' field boolean.""",
-            model=GPT_4O_MINI,
-            result_model=RelevanceResult,
-        )
+        """
+You are an expert in determining if a snippet of code or documentation is directly relevant to understand the changes listed under <Patch File>. Your response must be a 'relevant' field boolean.
+"""
 
         self.summaryAgent = SummaryAgent()
 
@@ -188,27 +184,28 @@ You are an expert in generating code search queries from a patch file to get add
         print("all: ", all_results)
 
         # Filter rag search results using LLM-based relevance checking
-        filtered_results = []
-        for result in all_results.values(): 
+        #filtered_results = []
+        #for result in all_results.values(): 
             
-            try:
-                relevance_check = yield from self.relevanceAgent.grab_final_result(
-                    f"<Patch File>\n{request_context.get('patch_content')}\n</Patch File>\n\n<Content>{result.content}</Content><Query>{result.query}</Query>"
-                )
-                
-                if relevance_check.relevant:
-                    filtered_results.append(result)
-            except Exception as e:
+        #    try:
+        #        relevance_check = yield from self.relevanceAgent.grab_final_result(
+        #            "True"
+        #        )
+        #        print(relevance_check)
+                #f"<Patch File>\n{request_context.get('patch_content')}\n</Patch File>\n\n<Content>{result.content}</Content><Query>{result.query}</Query>"
+                #if relevance_check.relevant:
+                #    filtered_results.append(result)
+        #    except Exception as e:
                 # LLM error
-                print(e)
+        #        print(e)
 
-        for result in all_results.values():
-            filtered_results.append(result)
+        #for result in all_results.values():
+        #    filtered_results.append(result)
 
-        print("filtered: ", str(filtered_results))
+        #print("filtered: ", str(filtered_results))
 
         # Prepare for summary
-        formatted_str = self.prepare_summary(request_context.get("patch_content"),filtered_results)
+        formatted_str = self.prepare_summary(request_context.get("patch_content"),all_results)
 
         print(formatted_str)
 
