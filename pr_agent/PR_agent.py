@@ -81,7 +81,7 @@ You are an expert in determining if a snippet of code or documentation is direct
 
         self.summaryAgent = SummaryAgent()
 
-    def prepare_summary(self, patch_content: str, filtered_results: Dict[SearchResult]) -> str:
+    def prepare_summary(self, patch_content: str, filtered_results: Dict[str,SearchResult]) -> str:
         
         """Prepare for summary agent"""
         formatted_str = ""
