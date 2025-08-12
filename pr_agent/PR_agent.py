@@ -75,9 +75,6 @@ You are an expert in generating code search queries from a patch file to get add
             model=GPT_4O_MINI,
             result_model=Searches,
         )
-        """
-You are an expert in determining if a snippet of code or documentation is directly relevant to understand the changes listed under <Patch File>. Your response must be a 'relevant' field boolean.
-"""
 
         self.summaryAgent = SummaryAgent()
 
@@ -96,7 +93,7 @@ You are an expert in determining if a snippet of code or documentation is direct
             formatted_str += f"{result.content}\n"
             formatted_str += f"</{result.file_path}>\n\n"
             
-            if token_counter(model=SUMMARY_MODEL, messages=[{"role": "user", "content": {final_str}}]) < 115000:
+            if token_counter(model=SUMMARY_MODEL, messages=[{"role": "user", "content": {final_str}}]) > 115000:
                 break
             else:
                 final_str = formatted_str[:]
